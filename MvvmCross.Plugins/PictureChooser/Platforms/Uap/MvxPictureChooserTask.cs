@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Windows.Foundation;
 using Windows.Graphics.Imaging;
@@ -29,16 +30,26 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Uap
             TakePictureCommon(StorageFileFromDisk, maxPixelDimension, percentQuality, (stream, name) => pictureAvailable(stream), assumeCancelled);
         }
 
-        public void ChoosePicturesFromLibraryWithNames(int maxPixelDimension, int percentQuality, Action<Dictionary<Stream, string>> picturesAvailable,
-            Action assumeCancelled)
+        public void ChoosePicturesFromLibraryWithNames(int maxPixelDimension, int percentQuality, Action<Dictionary<Stream, string>> picturesAvailable, Action assumeCancelled)
         {
-            throw new NotImplementedException();
+            TakePicturesCommon(StorageFilesFromDisk, maxPixelDimension, percentQuality, picturesAvailable, assumeCancelled);
         }
 
-        public void ChoosePicturesFromLibrary(int maxPixelDimension, int percentQuality, Action<List<Stream>> picturesAvailable,
-            Action assumeCancelled)
+        public void ChoosePicturesFromLibrary(int maxPixelDimension, int percentQuality, Action<List<Stream>> picturesAvailable, Action assumeCancelled)
         {
-            throw new NotImplementedException();
+            var picturesAvailableDictionaryAction = new Action<Dictionary<Stream, string>>(streamDictionary =>
+            {
+                if (streamDictionary == null || streamDictionary.Keys.Count == 0)
+                {
+                    picturesAvailable.Invoke(null);
+                    return;
+                }
+
+                var streamList = streamDictionary.Keys.ToList();
+                picturesAvailable.Invoke(streamList);
+            });
+
+            ChoosePicturesFromLibraryWithNames(maxPixelDimension, percentQuality, picturesAvailableDictionaryAction, assumeCancelled);
         }
 
         public void TakePicture(int maxPixelDimension, int percentQuality, Action<Stream> pictureAvailable, Action assumeCancelled)
@@ -55,7 +66,9 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Uap
 
         public Task<Dictionary<Stream, string>> ChoosePicturesFromLibrary(int maxPixelDimension, int percentQuality)
         {
-            throw new NotImplementedException();
+            var task = new TaskCompletionSource<Dictionary<Stream, string>>();
+            ChoosePicturesFromLibraryWithNames(maxPixelDimension, percentQuality, task.SetResult, () => task.SetResult(null));
+            return task.Task;
         }
 
         public Task<Stream> TakePicture(int maxPixelDimension, int percentQuality)
@@ -75,8 +88,7 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Uap
             var dispatcher = CoreWindow.GetForCurrentThread().Dispatcher;
             dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () =>
             {
-                await
-                    Process(storageFile, maxPixelDimension, percentQuality, pictureAvailable, assumeCancelled);
+                await Process(storageFile, maxPixelDimension, percentQuality, pictureAvailable, assumeCancelled);
             });
         }
 
@@ -95,6 +107,38 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Uap
             pictureAvailable(resizedStream.AsStreamForRead(), file.DisplayName);
         }
 
+        private void TakePicturesCommon(Func<Task<IReadOnlyList<StorageFile>>> storageFiles, int maxPixelDimension, int percentQuality,
+            Action<Dictionary<Stream, string>> picturesAvailable, Action assumeCancelled)
+        {
+            var dispatcher = CoreWindow.GetForCurrentThread().Dispatcher;
+            dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () =>
+            {
+                await ProcessFiles(storageFiles, maxPixelDimension, percentQuality, picturesAvailable, assumeCancelled);
+            });
+        }
+
+        private async Task ProcessFiles(Func<Task<IReadOnlyList<StorageFile>>> storageFile, int maxPixelDimension, int percentQuality, Action<Dictionary<Stream, string>> picturesAvailable, Action assumeCancelled)
+        {
+            var files = await storageFile();
+            if (files == null || files.Count == 0)
+            {
+                assumeCancelled();
+                return;
+            }
+
+            var streams = new Dictionary<Stream, string>();
+
+            foreach (var file in files)
+            {
+                var rawFileStream = await file.OpenAsync(FileAccessMode.Read);
+                var resizedStream = await ResizeJpegStreamAsync(maxPixelDimension, percentQuality, rawFileStream);
+
+                streams.Add(resizedStream.AsStreamForRead(), file.DisplayName);
+            }
+
+            picturesAvailable(streams);
+        }
+
         private static async Task<StorageFile> StorageFileFromCamera()
         {
             var dialog = new CameraCaptureUI();
@@ -104,13 +148,28 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Uap
 
         private static async Task<StorageFile> StorageFileFromDisk()
         {
+            var filePicker = GetFilePicker();
+
+            return await filePicker.PickSingleFileAsync();
+        }
+
+        private static async Task<IReadOnlyList<StorageFile>> StorageFilesFromDisk()
+        {
+            var filePicker = GetFilePicker();
+
+            return await filePicker.PickMultipleFilesAsync();
+        }
+
+        private static FileOpenPicker GetFilePicker()
+        {
             var filePicker = new FileOpenPicker();
+
             filePicker.FileTypeFilter.Add(".jpg");
             filePicker.FileTypeFilter.Add(".jpeg");
             filePicker.ViewMode = PickerViewMode.Thumbnail;
             filePicker.SuggestedStartLocation = PickerLocationId.PicturesLibrary;
 
-            return await filePicker.PickSingleFileAsync();
+            return filePicker;
         }
 
         private async Task<IRandomAccessStream> ResizeJpegStreamAsync(int maxPixelDimension, int percentQuality, IRandomAccessStream input)

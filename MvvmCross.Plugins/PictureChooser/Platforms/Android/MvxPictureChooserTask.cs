@@ -40,18 +40,15 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Android
                                 pictureAvailable, assumeCancelled);
         }
 
-        public void ChoosePictureFromLibrary(int maxPixelDimension, int percentQuality, Action<Stream> pictureAvailable,
-                                             Action assumeCancelled)
+        public void ChoosePictureFromLibrary(int maxPixelDimension, int percentQuality, Action<Stream> pictureAvailable, Action assumeCancelled)
         {
             ChoosePictureFromLibrary(maxPixelDimension, percentQuality, (stream, name) => pictureAvailable(stream), assumeCancelled);
         }
 
-        public void ChoosePicturesFromLibraryWithNames(int maxPixelDimension, int percentQuality, Action<Dictionary<Stream, string>> picturesAvailable,
-            Action assumeCancelled)
+        public void ChoosePicturesFromLibraryWithNames(int maxPixelDimension, int percentQuality, Action<Dictionary<Stream, string>> picturesAvailable, Action assumeCancelled)
         {
             var intent = GetChoosePictureIntent(true);
-            ChoosePicturesCommon(MvxIntentRequestCode.PickFromFile, intent, maxPixelDimension, percentQuality,
-                picturesAvailable, assumeCancelled);
+            ChoosePicturesCommon(MvxIntentRequestCode.PickFromFile, intent, maxPixelDimension, percentQuality, picturesAvailable, assumeCancelled);
         }
 
         private static Intent GetChoosePictureIntent(bool allowMultiple = false)
@@ -67,8 +64,7 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Android
             return intent;
         }
 
-        public void ChoosePicturesFromLibrary(int maxPixelDimension, int percentQuality, Action<List<Stream>> picturesAvailable,
-            Action assumeCancelled)
+        public void ChoosePicturesFromLibrary(int maxPixelDimension, int percentQuality, Action<List<Stream>> picturesAvailable, Action assumeCancelled)
         {
             var picturesAvailableDictionaryAction = new Action<Dictionary<Stream, string>>(streamDictionary =>
             {
@@ -85,8 +81,7 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Android
             ChoosePicturesFromLibraryWithNames(maxPixelDimension, percentQuality, picturesAvailableDictionaryAction, assumeCancelled);
         }
 
-        public void TakePicture(int maxPixelDimension, int percentQuality, Action<Stream> pictureAvailable,
-                                Action assumeCancelled)
+        public void TakePicture(int maxPixelDimension, int percentQuality, Action<Stream> pictureAvailable, Action assumeCancelled)
         {
             var intent = new Intent(MediaStore.ActionImageCapture);
 
@@ -144,8 +139,7 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Android
             if (_currentRequestParameters != null)
                 throw new MvxException("Cannot request a second picture while the first request is still pending");
 
-            _currentRequestParameters = new RequestParameters(maxPixelDimension, percentQuality, pictureAvailable,
-                                                              assumeCancelled);
+            _currentRequestParameters = new RequestParameters(maxPixelDimension, percentQuality, pictureAvailable, assumeCancelled);
             StartActivityForResult((int)pickId, intent);
         }
 
@@ -155,8 +149,7 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Android
             if (_currentRequestParameters != null)
                 throw new MvxException("Cannot request another picture chooser while the first request is still pending");
 
-            _currentRequestParameters = new RequestParameters(maxPixelDimension, percentQuality, picturesAvailable,
-                assumeCancelled);
+            _currentRequestParameters = new RequestParameters(maxPixelDimension, percentQuality, picturesAvailable, assumeCancelled);
             StartActivityForResult((int)pickId, intent);
         }
 
