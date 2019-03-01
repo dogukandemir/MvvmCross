@@ -35,8 +35,7 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Android
         public void ChoosePictureFromLibrary(int maxPixelDimension, int percentQuality, Action<Stream, string> pictureAvailable,
                                      Action assumeCancelled)
         {
-            var intent = new Intent(Intent.ActionGetContent);
-            intent.SetType("image/*");
+            var intent = GetChoosePictureIntent();
             ChoosePictureCommon(MvxIntentRequestCode.PickFromFile, intent, maxPixelDimension, percentQuality,
                                 pictureAvailable, assumeCancelled);
         }
@@ -50,12 +49,22 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Android
         public void ChoosePicturesFromLibraryWithNames(int maxPixelDimension, int percentQuality, Action<Dictionary<Stream, string>> picturesAvailable,
             Action assumeCancelled)
         {
-            var intent = new Intent(Intent.ActionGetContent);
-            intent.SetType("image/*");
-            intent.SetAction(Intent.ActionGetContent);
-            intent.PutExtra(Intent.ExtraAllowMultiple, true);
+            var intent = GetChoosePictureIntent(true);
             ChoosePicturesCommon(MvxIntentRequestCode.PickFromFile, intent, maxPixelDimension, percentQuality,
                 picturesAvailable, assumeCancelled);
+        }
+
+        private static Intent GetChoosePictureIntent(bool allowMultiple = false)
+        {
+            var intent = new Intent(Intent.ActionGetContent);
+            intent.SetType("image/*");
+
+            if (allowMultiple)
+            {
+                intent.PutExtra(Intent.ExtraAllowMultiple, true);
+            }
+
+            return intent;
         }
 
         public void ChoosePicturesFromLibrary(int maxPixelDimension, int percentQuality, Action<List<Stream>> picturesAvailable,
@@ -196,7 +205,7 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Android
             var responseSent = false;
             try
             {
-                // Note for furture bug-fixing/maintenance - it might be better to use var outputFileUri = data.GetParcelableArrayExtra("outputFileuri") here?
+                // Note for future bug-fixing/maintenance - it might be better to use var outputFileUri = data.GetParcelableArrayExtra("outputFileuri") here?
                 if (result.ResultCode != Result.Ok)
                 {
                     MvxPluginLog.Instance.Trace("Non-OK result received from MvxIntentResult - {0} - request was {1}",
@@ -204,6 +213,7 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Android
                     return;
                 }
 
+                // Checking multiple streams available or not
                 if (result.Data?.ClipData?.ItemCount > 0 && uri == null)
                 {
                     var streams = new Dictionary<Stream, string>();
@@ -213,11 +223,30 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Android
                     {
                         var data = intent.ClipData.GetItemAt(i);
 
-                        var stream = Mvx.IoCProvider.Resolve<IMvxAndroidGlobals>().ApplicationContext.ContentResolver.OpenInputStream(data.Uri);
-                        streams.Add(stream, Path.GetFileNameWithoutExtension(data.Uri.Path));
+                        if (string.IsNullOrEmpty(data?.Uri?.Path))
+                        {
+                            MvxPluginLog.Instance.Trace($"Empty uri or file path received for MvxIntentResult -> index {i}");
+                            continue;
+                        }
+
+                        MvxPluginLog.Instance.Trace($"Loading InMemoryBitmap started (index {i})...");
+                        var mStream = LoadInMemoryBitmap(data.Uri);
+                        if (mStream == null)
+                        {
+                            MvxPluginLog.Instance.Trace($"Loading InMemoryBitmap failed (index {i})...");
+                            continue;
+                        }
+                        MvxPluginLog.Instance.Trace($"Loading InMemoryBitmap complete (index {i})...");
+
+                        MvxPluginLog.Instance.Trace($"Adding stream (index {i}) to streams started...");
+                        streams.Add(mStream, Path.GetFileNameWithoutExtension(data.Uri.Path));
+                        MvxPluginLog.Instance.Trace($"Adding stream (index {i}) to streams completed...");
                     }
 
+                    responseSent = true;
+                    MvxPluginLog.Instance.Trace("Sending picturesAvailable...");
                     _currentRequestParameters.PicturesAvailable(streams);
+                    MvxPluginLog.Instance.Trace("picturesAvailable completed...");
 
                     return;
                 }
