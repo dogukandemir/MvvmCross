@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -86,6 +87,18 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Ios
             ChoosePictureFromLibrary(maxPixelDimension, percentQuality, (stream, name) => pictureAvailable(stream), assumeCancelled);
         }
 
+        public void ChoosePicturesFromLibraryWithNames(int maxPixelDimension, int percentQuality, Action<Dictionary<Stream, string>> picturesAvailable,
+            Action assumeCancelled)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ChoosePicturesFromLibrary(int maxPixelDimension, int percentQuality, Action<List<Stream>> picturesAvailable,
+            Action assumeCancelled)
+        {
+            throw new NotImplementedException();
+        }
+
         public void TakePicture(int maxPixelDimension, int percentQuality, Action<Stream> pictureAvailable,
                                 Action assumeCancelled)
         {
@@ -100,6 +113,11 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Ios
             var task = new TaskCompletionSource<Stream>();
             ChoosePictureFromLibrary(maxPixelDimension, percentQuality, task.SetResult, () => task.SetResult(null));
             return task.Task;
+        }
+
+        public Task<Dictionary<Stream, string>> ChoosePicturesFromLibrary(int maxPixelDimension, int percentQuality)
+        {
+            throw new NotImplementedException();
         }
 
         public Task<Stream> TakePicture(int maxPixelDimension, int percentQuality)

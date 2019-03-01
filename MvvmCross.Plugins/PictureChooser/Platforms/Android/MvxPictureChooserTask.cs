@@ -3,7 +3,9 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Android.App;
 using Android.Content;
@@ -45,6 +47,35 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Android
             ChoosePictureFromLibrary(maxPixelDimension, percentQuality, (stream, name) => pictureAvailable(stream), assumeCancelled);
         }
 
+        public void ChoosePicturesFromLibraryWithNames(int maxPixelDimension, int percentQuality, Action<Dictionary<Stream, string>> picturesAvailable,
+            Action assumeCancelled)
+        {
+            var intent = new Intent(Intent.ActionGetContent);
+            intent.SetType("image/*");
+            intent.SetAction(Intent.ActionGetContent);
+            intent.PutExtra(Intent.ExtraAllowMultiple, true);
+            ChoosePicturesCommon(MvxIntentRequestCode.PickFromFile, intent, maxPixelDimension, percentQuality,
+                picturesAvailable, assumeCancelled);
+        }
+
+        public void ChoosePicturesFromLibrary(int maxPixelDimension, int percentQuality, Action<List<Stream>> picturesAvailable,
+            Action assumeCancelled)
+        {
+            var picturesAvailableDictionaryAction = new Action<Dictionary<Stream, string>>(streamDictionary =>
+            {
+                if (streamDictionary == null || streamDictionary.Keys.Count == 0)
+                {
+                    picturesAvailable.Invoke(null);
+                    return;
+                }
+
+                var streamList = streamDictionary.Keys.ToList();
+                picturesAvailable.Invoke(streamList);
+            });
+
+            ChoosePicturesFromLibraryWithNames(maxPixelDimension, percentQuality, picturesAvailableDictionaryAction, assumeCancelled);
+        }
+
         public void TakePicture(int maxPixelDimension, int percentQuality, Action<Stream> pictureAvailable,
                                 Action assumeCancelled)
         {
@@ -63,6 +94,13 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Android
         {
             var task = new TaskCompletionSource<Stream>();
             ChoosePictureFromLibrary(maxPixelDimension, percentQuality, task.SetResult, () => task.SetResult(null));
+            return task.Task;
+        }
+
+        public Task<Dictionary<Stream, string>> ChoosePicturesFromLibrary(int maxPixelDimension, int percentQuality)
+        {
+            var task = new TaskCompletionSource<Dictionary<Stream, string>>();
+            ChoosePicturesFromLibraryWithNames(maxPixelDimension, percentQuality, task.SetResult, () => task.SetResult(null));
             return task.Task;
         }
 
@@ -99,6 +137,17 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Android
 
             _currentRequestParameters = new RequestParameters(maxPixelDimension, percentQuality, pictureAvailable,
                                                               assumeCancelled);
+            StartActivityForResult((int)pickId, intent);
+        }
+
+        public void ChoosePicturesCommon(MvxIntentRequestCode pickId, Intent intent, int maxPixelDimension,
+            int percentQuality, Action<Dictionary<Stream, string>> picturesAvailable, Action assumeCancelled)
+        {
+            if (_currentRequestParameters != null)
+                throw new MvxException("Cannot request another picture chooser while the first request is still pending");
+
+            _currentRequestParameters = new RequestParameters(maxPixelDimension, percentQuality, picturesAvailable,
+                assumeCancelled);
             StartActivityForResult((int)pickId, intent);
         }
 
@@ -155,6 +204,24 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Android
                     return;
                 }
 
+                if (result.Data?.ClipData?.ItemCount > 0 && uri == null)
+                {
+                    var streams = new Dictionary<Stream, string>();
+
+                    var intent = result.Data;
+                    for (var i = 0; i < intent.ClipData.ItemCount; i++)
+                    {
+                        var data = intent.ClipData.GetItemAt(i);
+
+                        var stream = Mvx.IoCProvider.Resolve<IMvxAndroidGlobals>().ApplicationContext.ContentResolver.OpenInputStream(data.Uri);
+                        streams.Add(stream, Path.GetFileNameWithoutExtension(data.Uri.Path));
+                    }
+
+                    _currentRequestParameters.PicturesAvailable(streams);
+
+                    return;
+                }
+
                 if (string.IsNullOrEmpty(uri?.Path))
                 {
                     MvxPluginLog.Instance.Trace("Empty uri or file path received for MvxIntentResult");
@@ -173,7 +240,6 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Android
                 MvxPluginLog.Instance.Trace("Sending pictureAvailable...");
                 _currentRequestParameters.PictureAvailable(memoryStream, Path.GetFileNameWithoutExtension(uri.Path));
                 MvxPluginLog.Instance.Trace("pictureAvailable completed...");
-                return;
             }
             finally
             {
@@ -302,7 +368,17 @@ namespace MvvmCross.Plugin.PictureChooser.Platforms.Android
                 PictureAvailable = pictureAvailable;
             }
 
+            public RequestParameters(int maxPixelDimension, int percentQuality, Action<Dictionary<Stream, string>> picturesAvailable,
+                Action assumeCancelled)
+            {
+                PercentQuality = percentQuality;
+                MaxPixelDimension = maxPixelDimension;
+                AssumeCancelled = assumeCancelled;
+                PicturesAvailable = picturesAvailable;
+            }
+
             public Action<Stream, string> PictureAvailable { get; private set; }
+            public Action<Dictionary<Stream, string>> PicturesAvailable { get; private set; }
             public Action AssumeCancelled { get; private set; }
             public int MaxPixelDimension { get; private set; }
             public int PercentQuality { get; private set; }
